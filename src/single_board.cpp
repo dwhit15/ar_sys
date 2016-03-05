@@ -18,6 +18,8 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include "std_msgs/Float32MultiArray.h"
+#include "std_msgs/MultiArrayLayout.h"
 #include <ar_sys/utils.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
@@ -33,7 +35,9 @@ class ArSysSingleBoard
 		bool draw_markers;
 		bool draw_markers_cube;
 		bool draw_markers_axis;
-        bool publish_tf;
+    bool publish_tf;
+		bool publish_pose;
+		bool publish_corners;
 		MarkerDetector mDetector;
 		vector<Marker> markers;
 		BoardConfiguration the_board_config;
@@ -44,8 +48,9 @@ class ArSysSingleBoard
 		image_transport::Publisher image_pub;
 		image_transport::Publisher debug_pub;
 		ros::Publisher pose_pub;
-		ros::Publisher transform_pub; 
+		ros::Publisher transform_pub;
 		ros::Publisher position_pub;
+		ros::Publisher features_pub;
 		std::string board_frame;
 
 		double marker_size;
@@ -71,6 +76,7 @@ class ArSysSingleBoard
 			pose_pub = nh.advertise<geometry_msgs::PoseStamped>("pose", 100);
 			transform_pub = nh.advertise<geometry_msgs::TransformStamped>("transform", 100);
 			position_pub = nh.advertise<geometry_msgs::Vector3Stamped>("position", 100);
+			features_pub = nh.advertise<std_msgs::Float32MultiArray>("features", 100);
 
 			nh.param<double>("marker_size", marker_size, 0.05);
 			nh.param<std::string>("board_config", board_config, "boardConfiguration.yml");
@@ -79,7 +85,9 @@ class ArSysSingleBoard
 			nh.param<bool>("draw_markers", draw_markers, false);
 			nh.param<bool>("draw_markers_cube", draw_markers_cube, false);
 			nh.param<bool>("draw_markers_axis", draw_markers_axis, false);
-            nh.param<bool>("publish_tf", publish_tf, false);
+      nh.param<bool>("publish_tf", publish_tf, false);
+      nh.param<bool>("publish_pose", publish_pose, true);
+      nh.param<bool>("publish_corners", publish_corners, false);
 
 			the_board_config.readFromFile(board_config.c_str());
 
@@ -90,7 +98,7 @@ class ArSysSingleBoard
 		void image_callback(const sensor_msgs::ImageConstPtr& msg)
 		{
             static tf::TransformBroadcaster br;
-            
+
 			if(!cam_info_received) return;
 
 			cv_bridge::CvImagePtr cv_ptr;
@@ -105,14 +113,16 @@ class ArSysSingleBoard
 				//Ok, let's detect
 				mDetector.detect(inImage, markers, camParam, marker_size, false);
 				//Detection of the board
+
 				float probDetect=the_board_detector.detect(markers, the_board_config, the_board_detected, camParam, marker_size);
-				if (probDetect > 0.0)
+
+				if (probDetect > 0.0 && publish_pose)
 				{
 					tf::Transform transform = ar_sys::getTf(the_board_detected.Rvec, the_board_detected.Tvec);
 
 					tf::StampedTransform stampedTransform(transform, msg->header.stamp, msg->header.frame_id, board_frame);
-                    
-                    if (publish_tf) 
+
+                    if (publish_tf)
                         br.sendTransform(stampedTransform);
 
 					geometry_msgs::PoseStamped poseMsg;
@@ -136,6 +146,40 @@ class ArSysSingleBoard
 					markers[i].draw(resultImg,cv::Scalar(0,0,255),2);
 				}
 
+				//for each marker, publish it's id and coordinate points
+				if (publish_corners && markers.size() != 0)
+				{
+					std_msgs::Float32MultiArray marker_array;
+					std_msgs::MultiArrayLayout marker_layout;
+					size_t corner_size = 4;
+					size_t dimension_size = 2;
+					marker_layout.dim.push_back(std_msgs::MultiArrayDimension());
+					marker_layout.dim[0].label="marker";
+					marker_layout.dim[0].size=markers.size();
+					marker_layout.dim[0].stride=markers.size()*corner_size*dimension_size;
+					marker_layout.dim.push_back(std_msgs::MultiArrayDimension());
+					marker_layout.dim[1].label="corner";
+					marker_layout.dim[1].size=corner_size;
+					marker_layout.dim[1].stride=corner_size*dimension_size;
+					marker_layout.dim.push_back(std_msgs::MultiArrayDimension());
+					marker_layout.dim[2].label="dimension";
+					marker_layout.dim[2].size=dimension_size;
+					marker_layout.dim[2].stride=dimension_size;
+					marker_array.layout=marker_layout;
+
+					for(size_t i=0; i < markers.size(); ++i)
+					{
+						marker_array.data.push_back(markers[i].id);
+						int id = markers[i].id;
+						for (int j=0;j<4;j++)
+						{
+							cv::Point2f feature = markers[i][j];
+							marker_array.data.push_back(feature.x);
+							marker_array.data.push_back(feature.y);
+						}
+					}
+					features_pub.publish(marker_array);
+				}
 
 				if(camParam.isValid() && marker_size != -1)
 				{
