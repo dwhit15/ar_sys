@@ -38,6 +38,7 @@ class ArSysSingleBoard
     bool publish_tf;
 		bool publish_pose;
 		bool publish_corners;
+		bool calculate_pose;
 		MarkerDetector mDetector;
 		vector<Marker> markers;
 		BoardConfiguration the_board_config;
@@ -50,7 +51,9 @@ class ArSysSingleBoard
 		ros::Publisher pose_pub;
 		ros::Publisher transform_pub;
 		ros::Publisher position_pub;
-		ros::Publisher features_pub;
+		// ros::Publisher corner_measure_uv_pub;
+		// ros::Publisher corner_board_pos_pub;
+		ros::Publisher corner_pub;
 		std::string board_frame;
 
 		double marker_size;
@@ -76,7 +79,9 @@ class ArSysSingleBoard
 			pose_pub = nh.advertise<geometry_msgs::PoseStamped>("pose", 100);
 			transform_pub = nh.advertise<geometry_msgs::TransformStamped>("transform", 100);
 			position_pub = nh.advertise<geometry_msgs::Vector3Stamped>("position", 100);
-			features_pub = nh.advertise<std_msgs::Float32MultiArray>("features", 100);
+			// corner_measure_uv_pub = nh.advertise<std_msgs::Float32MultiArray>("corners/uv_camera", 100);
+			// corner_board_pos_pub = nh.advertise<std_msgs::Float32MultiArray>("corners/xyz_board", 100);
+			corner_pub = nh.advertise<std_msgs::Float32MultiArray>("corners", 100);
 
 			nh.param<double>("marker_size", marker_size, 0.05);
 			nh.param<std::string>("board_config", board_config, "boardConfiguration.yml");
@@ -88,8 +93,12 @@ class ArSysSingleBoard
       nh.param<bool>("publish_tf", publish_tf, false);
       nh.param<bool>("publish_pose", publish_pose, true);
       nh.param<bool>("publish_corners", publish_corners, false);
+      nh.param<bool>("calculate_pose", calculate_pose, true);
 
 			the_board_config.readFromFile(board_config.c_str());
+			ROS_INFO_STREAM(calculate_pose);
+			if (!calculate_pose)
+				the_board_config.mInfoType=BoardConfiguration::NONE;
 
 			ROS_INFO("ArSys node started with marker size of %f m and board configuration: %s",
 					 marker_size, board_config.c_str());
@@ -97,7 +106,7 @@ class ArSysSingleBoard
 
 		void image_callback(const sensor_msgs::ImageConstPtr& msg)
 		{
-            static tf::TransformBroadcaster br;
+      static tf::TransformBroadcaster br;
 
 			if(!cam_info_received) return;
 
@@ -116,81 +125,91 @@ class ArSysSingleBoard
 
 				float probDetect=the_board_detector.detect(markers, the_board_config, the_board_detected, camParam, marker_size);
 
-				if (probDetect > 0.0 && publish_pose)
-				{
-					tf::Transform transform = ar_sys::getTf(the_board_detected.Rvec, the_board_detected.Tvec);
+				if (calculate_pose) {
 
-					tf::StampedTransform stampedTransform(transform, msg->header.stamp, msg->header.frame_id, board_frame);
+					if (probDetect > 0.0 && publish_pose)
+					{
+						tf::Transform transform = ar_sys::getTf(the_board_detected.Rvec, the_board_detected.Tvec);
 
-                    if (publish_tf)
-                        br.sendTransform(stampedTransform);
+						tf::StampedTransform stampedTransform(transform, msg->header.stamp, msg->header.frame_id, board_frame);
 
-					geometry_msgs::PoseStamped poseMsg;
-					tf::poseTFToMsg(transform, poseMsg.pose);
-					poseMsg.header.frame_id = msg->header.frame_id;
-					poseMsg.header.stamp = msg->header.stamp;
-					pose_pub.publish(poseMsg);
+	                    if (publish_tf)
+	                        br.sendTransform(stampedTransform);
 
-					geometry_msgs::TransformStamped transformMsg;
-					tf::transformStampedTFToMsg(stampedTransform, transformMsg);
-					transform_pub.publish(transformMsg);
+						geometry_msgs::PoseStamped poseMsg;
+						tf::poseTFToMsg(transform, poseMsg.pose);
+						poseMsg.header.frame_id = msg->header.frame_id;
+						poseMsg.header.stamp = msg->header.stamp;
+						pose_pub.publish(poseMsg);
 
-					geometry_msgs::Vector3Stamped positionMsg;
-					positionMsg.header = transformMsg.header;
-					positionMsg.vector = transformMsg.transform.translation;
-					position_pub.publish(positionMsg);
-				}
-				//for each marker, draw info and its boundaries in the image
-				for(size_t i=0; draw_markers && i < markers.size(); ++i)
-				{
-					markers[i].draw(resultImg,cv::Scalar(0,0,255),2);
+						geometry_msgs::TransformStamped transformMsg;
+						tf::transformStampedTFToMsg(stampedTransform, transformMsg);
+						transform_pub.publish(transformMsg);
+
+						geometry_msgs::Vector3Stamped positionMsg;
+						positionMsg.header = transformMsg.header;
+						positionMsg.vector = transformMsg.transform.translation;
+						position_pub.publish(positionMsg);
+					}
+					//for each marker, draw info and its boundaries in the image
+					for(size_t i=0; draw_markers && i < markers.size(); ++i)
+					{
+						markers[i].draw(resultImg,cv::Scalar(0,0,255),2);
+					}
+
+					if(camParam.isValid() && marker_size != -1)
+					{
+						//draw a 3d cube in each marker if there is 3d info
+						for(size_t i=0; i<markers.size(); ++i)
+						{
+							if (draw_markers_cube) CvDrawingUtils::draw3dCube(resultImg, markers[i], camParam);
+							if (draw_markers_axis) CvDrawingUtils::draw3dAxis(resultImg, markers[i], camParam);
+						}
+						//draw board axis
+						if (probDetect > 0.0) CvDrawingUtils::draw3dAxis(resultImg, the_board_detected, camParam);
+					}
+
 				}
 
 				//for each marker, publish it's id and coordinate points
 				if (publish_corners && markers.size() != 0)
 				{
-					std_msgs::Float32MultiArray marker_array;
-					std_msgs::MultiArrayLayout marker_layout;
-					size_t corner_size = 4;
-					size_t dimension_size = 2;
-					marker_layout.dim.push_back(std_msgs::MultiArrayDimension());
-					marker_layout.dim[0].label="marker";
-					marker_layout.dim[0].size=markers.size();
-					marker_layout.dim[0].stride=markers.size()*corner_size*dimension_size;
-					marker_layout.dim.push_back(std_msgs::MultiArrayDimension());
-					marker_layout.dim[1].label="corner";
-					marker_layout.dim[1].size=corner_size;
-					marker_layout.dim[1].stride=corner_size*dimension_size;
-					marker_layout.dim.push_back(std_msgs::MultiArrayDimension());
-					marker_layout.dim[2].label="dimension";
-					marker_layout.dim[2].size=dimension_size;
-					marker_layout.dim[2].stride=dimension_size;
-					marker_array.layout=marker_layout;
+					std_msgs::Float32MultiArray corner_msg;
+					std_msgs::MultiArrayLayout corner_msg_layout;
+					size_t coordinate_length = 5;
+					corner_msg_layout.dim.push_back(std_msgs::MultiArrayDimension());
+					corner_msg_layout.dim[0].label="corner";
+					corner_msg_layout.dim[0].size=markers.size();
+					corner_msg_layout.dim[0].stride=markers.size()*coordinate_length;
+					corner_msg_layout.dim.push_back(std_msgs::MultiArrayDimension());
+					corner_msg_layout.dim[1].label="coordinates";
+					corner_msg_layout.dim[1].size=coordinate_length;
+					corner_msg_layout.dim[1].stride=coordinate_length;
+					corner_msg.layout=corner_msg_layout;
 
-					for(size_t i=0; i < markers.size(); ++i)
+
+					for(size_t marker_index=0; marker_index < markers.size(); ++marker_index)
 					{
-						marker_array.data.push_back(markers[i].id);
-						int id = markers[i].id;
-						for (int j=0;j<4;j++)
+						Marker measured_marker = markers[marker_index];
+						aruco::MarkerInfo reference_marker =
+							the_board_detected.conf.getMarkerInfo ( measured_marker.id );
+						const double edge_length = cv::norm ( reference_marker[0]-reference_marker[1] );
+						const double marker_meter_per_pix = marker_size / edge_length;
+
+						for (int corner_index=0;corner_index<4;corner_index++)
 						{
-							cv::Point2f feature = markers[i][j];
-							marker_array.data.push_back(feature.x);
-							marker_array.data.push_back(feature.y);
+							cv::Point2f corner_uv = measured_marker[corner_index];
+							corner_msg.data.push_back(corner_uv.x);
+							corner_msg.data.push_back(corner_uv.y);
+
+							cv::Point3f corner_xyz = reference_marker[corner_index]*marker_meter_per_pix;
+							corner_msg.data.push_back(corner_xyz.x);
+							corner_msg.data.push_back(corner_xyz.y);
+							corner_msg.data.push_back(corner_xyz.z);
 						}
 					}
-					features_pub.publish(marker_array);
-				}
 
-				if(camParam.isValid() && marker_size != -1)
-				{
-					//draw a 3d cube in each marker if there is 3d info
-					for(size_t i=0; i<markers.size(); ++i)
-					{
-						if (draw_markers_cube) CvDrawingUtils::draw3dCube(resultImg, markers[i], camParam);
-						if (draw_markers_axis) CvDrawingUtils::draw3dAxis(resultImg, markers[i], camParam);
-					}
-					//draw board axis
-					if (probDetect > 0.0) CvDrawingUtils::draw3dAxis(resultImg, the_board_detected, camParam);
+					corner_pub.publish(corner_msg);
 				}
 
 				if(image_pub.getNumSubscribers() > 0)

@@ -225,4 +225,3 @@ namespace aruco {
         return BD.getDetectedBoard();
     }
 };
-

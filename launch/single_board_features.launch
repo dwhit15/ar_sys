@@ -2,7 +2,7 @@
 
 <launch>
 
-	<arg name="result_display" default="false"/>
+	<arg name="result_display" default="true"/>
 	<arg name="result_autosize" default="true"/>
 	<arg name="result_draw_markers" default="false" />
 	<arg name="result_draw_markers_cube" default="true" />
@@ -16,10 +16,11 @@
 
 	<arg name="board_config" default="$(find ar_sys)/data/single/board.yml" />
 	<arg name="board_frame_id" default="board1" />
-	<arg name="marker_size" default="0.05" />
+	<arg name="marker_size" default=".034" />
   <arg name="publish_tf" default="false" />
-	<arg name="publish_pose" default="false" />
+	<arg name="publish_pose" default="true" />
 	<arg name="publish_corners" default="true" />
+	<arg name="calculate_pose" default="false" />
 
   <node ns="$(arg video_namespace)" pkg="ar_sys" type="single_board" name="ar_single_board$(arg uid)" output="screen">
     <remap from="/camera_info" to="$(arg video_namespace)/$(arg video_info_topic)" />
@@ -30,6 +31,7 @@
 		<param name="board_frame" type="string" value="/$(arg board_frame_id)" />
 		<param name="marker_size" type="double" value="$(arg marker_size)"/>
 		<param name="draw_markers" type="bool" value="$(arg result_draw_markers)" />
+		<param name="calculate_pose" type="bool" value="$(arg calculate_pose)" />
 		<param name="draw_markers_cube" type="bool" value="$(arg result_draw_markers_cube)" />
 		<param name="draw_markers_axis" type="bool" value="$(arg result_draw_markers_axis)" />
 		<param name="publish_pose" type="bool" value="$(arg publish_pose)" />
