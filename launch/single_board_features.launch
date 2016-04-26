@@ -2,7 +2,7 @@
 
 <launch>
 
-	<arg name="result_display" default="true"/>
+	<arg name="result_display" default="false"/>
 	<arg name="result_autosize" default="true"/>
 	<arg name="result_draw_markers" default="false" />
 	<arg name="result_draw_markers_cube" default="true" />
@@ -14,13 +14,13 @@
 	<arg name="video_info_topic" default="camera_info"/>
 	<arg name="video_rectified" default="true" />
 
-	<arg name="board_config" default="$(find ar_sys)/data/single/board.yml" />
+	<arg name="board_config" default="$(find ar_sys)/data/single/marker100.yml" />
 	<arg name="board_frame_id" default="board1" />
-	<arg name="marker_size" default=".034" />
-  <arg name="publish_tf" default="false" />
+	<arg name="marker_size" default=".5" />
+  <arg name="publish_tf" default="true" />
 	<arg name="publish_pose" default="true" />
 	<arg name="publish_corners" default="true" />
-	<arg name="calculate_pose" default="false" />
+	<arg name="calculate_pose" default="true" />
 
   <node ns="$(arg video_namespace)" pkg="ar_sys" type="single_board" name="ar_single_board$(arg uid)" output="screen">
     <remap from="/camera_info" to="$(arg video_namespace)/$(arg video_info_topic)" />

@@ -1,4 +1,4 @@
 %YAML:1.0
 ar_sys_boards:
-   - { name:"/board1", path:"board1.yml", marker_size:0.03 }
-   - { name:"/board2", path:"board2.yml", marker_size:0.03 }
+   - { name:"/roomba_board", path:"marker50.yml", marker_size:0.5 }
+   - { name:"/target_board", path:"marker100.yml", marker_size:0.5}

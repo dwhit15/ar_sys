@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <launch>
+
+	<arg name="video_namespace" default="/stream_pointgrey"/>
+
 	<arg name="map_path" default="$(find ar_sys)/data/viewer/map.yml" />
 	<arg name="digital_filter_change_rate" default="0.5" />
 	<arg name="rviz_config_path" default="$(find ar_sys)/data/viewer/viewer.rviz" />
@@ -15,7 +18,6 @@
 		<param name="digital_filter_change_rate" type="double" value="$(arg digital_filter_change_rate)"/>
 	</node>
 
-	<node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_config_path)"/>
+	<!--  <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_config_path)"/> -->
 
 </launch>
-
