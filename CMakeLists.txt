@@ -5,10 +5,24 @@ find_package(catkin REQUIRED COMPONENTS
 	cv_bridge
 	dynamic_reconfigure
 	geometry_msgs
+	std_msgs
 	image_transport
 	roscpp
 	tf
 	visualization_msgs
+	message_generation
+)
+
+add_message_files(
+  FILES
+  ArCorners.msg
+	ArPixel.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
 )
 
 ###################################
@@ -23,7 +37,8 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 	INCLUDE_DIRS include
 	LIBRARIES aruco
-	CATKIN_DEPENDS cv_bridge dynamic_reconfigure geometry_msgs image_transport visualization_msgs roscpp tf
+	CATKIN_DEPENDS cv_bridge dynamic_reconfigure geometry_msgs image_transport
+	visualization_msgs roscpp tf message_runtime
 #	DEPENDS system_lib
 )
 
@@ -80,4 +95,3 @@ install(TARGETS aruco single_board multi_boards system_viewer
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
-
