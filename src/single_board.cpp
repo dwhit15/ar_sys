@@ -18,8 +18,7 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
-#include "std_msgs/Float32MultiArray.h"
-#include "std_msgs/MultiArrayLayout.h"
+#include "ar_sys/ArCorners.h"
 #include <ar_sys/utils.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
@@ -59,7 +58,7 @@ class ArSysSingleBoard
 		double marker_size;
 		std::string board_config;
 
-		ros::NodeHandle nh;
+		ros::NodeHandle nh_private;
 		image_transport::ImageTransport it;
 		image_transport::Subscriber image_sub;
 
@@ -68,32 +67,30 @@ class ArSysSingleBoard
 	public:
 		ArSysSingleBoard()
 			: cam_info_received(false),
-			nh("~"),
-			it(nh)
+			nh_private("~"),
+			it(nh_private)
 		{
 			image_sub = it.subscribe("/image", 1, &ArSysSingleBoard::image_callback, this);
-			cam_info_sub = nh.subscribe("/camera_info", 1, &ArSysSingleBoard::cam_info_callback, this);
+			cam_info_sub = nh_private.subscribe("/camera_info", 1, &ArSysSingleBoard::cam_info_callback, this);
 
 			image_pub = it.advertise("result", 1);
 			debug_pub = it.advertise("debug", 1);
-			pose_pub = nh.advertise<geometry_msgs::PoseStamped>("pose", 100);
-			transform_pub = nh.advertise<geometry_msgs::TransformStamped>("transform", 100);
-			position_pub = nh.advertise<geometry_msgs::Vector3Stamped>("position", 100);
-			// corner_measure_uv_pub = nh.advertise<std_msgs::Float32MultiArray>("corners/uv_camera", 100);
-			// corner_board_pos_pub = nh.advertise<std_msgs::Float32MultiArray>("corners/xyz_board", 100);
-			corner_pub = nh.advertise<std_msgs::Float32MultiArray>("corners", 100);
+			pose_pub = nh_private.advertise<geometry_msgs::PoseStamped>("pose", 100);
+			transform_pub = nh_private.advertise<geometry_msgs::TransformStamped>("transform", 100);
+			position_pub = nh_private.advertise<geometry_msgs::Vector3Stamped>("position", 100);
+			corner_pub = nh_private.advertise<ar_sys::ArCorners>("corners", 100);
 
-			nh.param<double>("marker_size", marker_size, 0.05);
-			nh.param<std::string>("board_config", board_config, "boardConfiguration.yml");
-			nh.param<std::string>("board_frame", board_frame, "");
-			nh.param<bool>("image_is_rectified", useRectifiedImages, true);
-			nh.param<bool>("draw_markers", draw_markers, false);
-			nh.param<bool>("draw_markers_cube", draw_markers_cube, false);
-			nh.param<bool>("draw_markers_axis", draw_markers_axis, false);
-      nh.param<bool>("publish_tf", publish_tf, false);
-      nh.param<bool>("publish_pose", publish_pose, true);
-      nh.param<bool>("publish_corners", publish_corners, false);
-      nh.param<bool>("calculate_pose", calculate_pose, true);
+			nh_private.param<double>("marker_size", marker_size, 0.05);
+			nh_private.param<std::string>("board_config", board_config, "boardConfiguration.yml");
+			nh_private.param<std::string>("board_frame", board_frame, "");
+			nh_private.param<bool>("image_is_rectified", useRectifiedImages, true);
+			nh_private.param<bool>("draw_markers", draw_markers, false);
+			nh_private.param<bool>("draw_markers_cube", draw_markers_cube, false);
+			nh_private.param<bool>("draw_markers_axis", draw_markers_axis, false);
+      nh_private.param<bool>("publish_tf", publish_tf, false);
+      nh_private.param<bool>("publish_pose", publish_pose, true);
+      nh_private.param<bool>("publish_corners", publish_corners, false);
+      nh_private.param<bool>("calculate_pose", calculate_pose, true);
 
 			the_board_config.readFromFile(board_config.c_str());
 			ROS_INFO_STREAM(calculate_pose);
@@ -174,41 +171,34 @@ class ArSysSingleBoard
 				//for each marker, publish it's id and coordinate points
 				if (publish_corners && markers.size() != 0)
 				{
-					std_msgs::Float32MultiArray corner_msg;
-					std_msgs::MultiArrayLayout corner_msg_layout;
-					size_t coordinate_length = 5;
-					corner_msg_layout.dim.push_back(std_msgs::MultiArrayDimension());
-					corner_msg_layout.dim[0].label="corner";
-					corner_msg_layout.dim[0].size=markers.size();
-					corner_msg_layout.dim[0].stride=markers.size()*coordinate_length;
-					corner_msg_layout.dim.push_back(std_msgs::MultiArrayDimension());
-					corner_msg_layout.dim[1].label="coordinates";
-					corner_msg_layout.dim[1].size=coordinate_length;
-					corner_msg_layout.dim[1].stride=coordinate_length;
-					corner_msg.layout=corner_msg_layout;
+					ar_sys::ArCorners corner_msg;
+					corner_msg.pixel_location.resize(markers.size()*4);
+					corner_msg.global_position.resize(markers.size()*4);
 
-
+					unsigned msg_data_index=0;
 					for(size_t marker_index=0; marker_index < markers.size(); ++marker_index)
 					{
 						Marker measured_marker = markers[marker_index];
 						aruco::MarkerInfo reference_marker =
 							the_board_detected.conf.getMarkerInfo ( measured_marker.id );
 						const double edge_length = cv::norm ( reference_marker[0]-reference_marker[1] );
-						const double marker_meter_per_pix = marker_size / edge_length;
+						double marker_meter_per_pix = marker_size / edge_length;
+						marker_meter_per_pix = 1;
 
 						for (int corner_index=0;corner_index<4;corner_index++)
 						{
 							cv::Point2f corner_uv = measured_marker[corner_index];
-							corner_msg.data.push_back(corner_uv.x);
-							corner_msg.data.push_back(corner_uv.y);
+							corner_msg.pixel_location[msg_data_index].u=corner_uv.x;
+							corner_msg.pixel_location[msg_data_index].v=corner_uv.y;
 
-							cv::Point3f corner_xyz = reference_marker[corner_index]*marker_meter_per_pix;
-							corner_msg.data.push_back(corner_xyz.x);
-							corner_msg.data.push_back(corner_xyz.y);
-							corner_msg.data.push_back(corner_xyz.z);
+							cv::Point3f corner_xyz = reference_marker[3-corner_index]*marker_meter_per_pix;
+							corner_msg.global_position[msg_data_index].x=corner_xyz.x;
+							corner_msg.global_position[msg_data_index].y=corner_xyz.y;
+							corner_msg.global_position[msg_data_index].z=corner_xyz.z;
+
+							msg_data_index++;
 						}
 					}
-
 					corner_pub.publish(corner_msg);
 				}
 

@@ -14,9 +14,9 @@
 	<arg name="video_info_topic" default="camera_info"/>
 	<arg name="video_rectified" default="true" />
 
-	<arg name="board_config" default="$(find ar_sys)/data/single/marker100.yml" />
+	<arg name="board_config" default="$(find ar_sys)/data/single/4_marker_2_ft_square.yml" />
 	<arg name="board_frame_id" default="board1" />
-	<arg name="marker_size" default=".5" />
+	<arg name="marker_size" default=".264" />
   <arg name="publish_tf" default="true" />
 	<arg name="publish_pose" default="true" />
 	<arg name="publish_corners" default="true" />
